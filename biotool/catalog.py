@@ -13,38 +13,38 @@ class ProteinExample:
 
 EXAMPLES = (
     ProteinExample(
-        "1CRN", "Crambina", "Crambe hispanica subsp. abyssinica",
-        "Una proteína vegetal pequeña: 46 residuos observados para explorar "
-        "su forma compacta y composición.",
+        "1CRN", "Crambin", "Crambe hispanica subsp. abyssinica",
+        "A small plant protein: explore its compact shape and composition "
+        "through 46 observed residues.",
     ),
     ProteinExample(
-        "1UBQ", "Ubiquitina humana", "Homo sapiens",
-        "Participa en el etiquetado de proteínas para su degradación. "
-        "Un ejemplo compacto de 76 residuos observados.",
+        "1UBQ", "Human ubiquitin", "Homo sapiens",
+        "Helps tag proteins for degradation. "
+        "A compact example with 76 observed residues.",
     ),
     ProteinExample(
-        "4INS", "Insulina porcina", "Sus scrofa",
-        "Compara las cadenas de la insulina: este archivo contiene cuatro cadenas "
-        "y 102 residuos observados. El zinc no se muestra.",
+        "4INS", "Porcine insulin", "Sus scrofa",
+        "Compare insulin chains: this file contains four chains "
+        "and 102 observed residues. Zinc is not shown.",
     ),
     ProteinExample(
-        "1LYZ", "Lisozima", "Gallus gallus",
-        "Una enzima de defensa de la clara de huevo que actúa sobre la pared "
-        "bacteriana. Contiene 129 residuos observados.",
+        "1LYZ", "Lysozyme", "Gallus gallus",
+        "A protective enzyme in egg white that acts on bacterial cell walls. "
+        "Contains 129 observed residues.",
     ),
     ProteinExample(
-        "1MBN", "Mioglobina", "Physeter macrocephalus",
-        "Explora la composición de una proteína globular de 153 residuos observados. "
-        "El grupo hemo no se muestra en esta vista.",
+        "1MBN", "Myoglobin", "Physeter macrocephalus",
+        "Explore the composition of a globular protein with 153 observed residues. "
+        "The heme group is not shown in this view.",
     ),
     ProteinExample(
-        "1GFL", "Proteína fluorescente GFP", "Aequorea victoria",
-        "Una proteína con plegamiento de barril beta. El archivo aporta dos cadenas "
-        "y 460 residuos observados; la vista no representa toda la química del cromóforo.",
+        "1GFL", "Green fluorescent protein (GFP)", "Aequorea victoria",
+        "A protein with a beta-barrel fold. The file contains two chains "
+        "and 460 observed residues; the view does not represent the full chromophore chemistry.",
     ),
     ProteinExample(
-        "2HHB", "Hemoglobina humana", "Homo sapiens",
-        "Compara cuatro cadenas y 574 residuos observados con la mioglobina. "
-        "Los grupos hemo no se muestran.",
+        "2HHB", "Human hemoglobin", "Homo sapiens",
+        "Compare four chains and 574 observed residues with myoglobin. "
+        "Heme groups are not shown.",
     ),
 )

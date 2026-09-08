@@ -61,7 +61,7 @@ class StructureTests(unittest.TestCase):
 
     def test_invalid_residues_are_reported_even_in_a_trailing_fragment(self):
         for sequence in ("AAZ", "AAA?", "aaa"):
-            with self.subTest(sequence=sequence), self.assertRaisesRegex(ValueError, "no reconocidos"):
+            with self.subTest(sequence=sequence), self.assertRaisesRegex(ValueError, "Unrecognized"):
                 gui.countEstr(sequence)
 
 
@@ -128,17 +128,24 @@ class ParserTests(unittest.TestCase):
         self.assertEqual(len(protein.coordinates), 2)
 
     def test_missing_protein_and_unknown_residues_are_reported(self):
-        for text in ("", "<html>Not a PDB</html>", atom_line(residue="UNK")):
-            with self.subTest(text=text), self.assertRaises(ValueError):
+        for text, message in (
+            ("", "The PDB file contains no amino acids with CA atoms."),
+            ("<html>Not a PDB</html>", "The PDB file contains no amino acids with CA atoms."),
+            (atom_line(residue="UNK"), "Unsupported residue: UNK, chain A, position 1."),
+        ):
+            with self.subTest(text=text), self.assertRaises(ValueError) as raised:
                 gui.parse_pdb(text, "1ABC")
+            self.assertEqual(str(raised.exception), message)
 
     def test_bad_coordinates_are_reported(self):
-        for text in (
-            "ATOM      1", atom_line(point=(float("nan"), 1, 2)),
-            atom_line()[:30] + "invalid " + atom_line()[38:],
+        for text, message in (
+            ("ATOM      1", "Incomplete coordinate record on line 1."),
+            (atom_line(point=(float("nan"), 1, 2)), "Non-finite coordinates on line 1."),
+            (atom_line()[:30] + "invalid " + atom_line()[38:], "Invalid coordinates on line 1."),
         ):
-            with self.subTest(text=text), self.assertRaises(ValueError):
+            with self.subTest(text=text), self.assertRaises(ValueError) as raised:
                 gui.parse_pdb(text, "1ABC")
+            self.assertEqual(str(raised.exception), message)
 
     def test_multiline_title_and_compound_fallback(self):
         text = "\n".join(["TITLE     FIRST", "TITLE    2 SECOND", atom_line()])
@@ -158,7 +165,9 @@ class DownloadTests(unittest.TestCase):
     @patch("urllib.request.urlopen")
     def test_invalid_id_never_reaches_network(self, urlopen):
         for value in ("", "../file", "1ABCD", "ABCD", "1A/B", "1 A1"):
-            with self.subTest(value=value), self.assertRaises(ValueError):
+            with self.subTest(value=value), self.assertRaisesRegex(
+                ValueError, "Enter a four-character PDB ID",
+            ):
                 gui.download_pdb(value)
         urlopen.assert_not_called()
 
@@ -191,10 +200,17 @@ class ChartTests(unittest.TestCase):
         self.assertEqual(tuple(pie.data[0].values), (2, 1, 0, 0))
         self.assertEqual(len(figure.data[4].x), 9)
         self.assertEqual(figure.data[4].mode, "markers")
-        self.assertEqual(tuple(pie.data[0].labels), ("Alfa", "Beta", "Giro beta", "Azar"))
+        self.assertEqual(tuple(pie.data[0].labels), ("Alpha", "Beta", "Beta turn", "Random"))
         self.assertEqual(tuple(pie.data[0].customdata), ("AAA AAA", "VVV", "", ""))
         self.assertEqual(pie.data[0].hole, 0.6)
         self.assertGreater(figure.layout.yaxis.domain[0], figure.layout.scene.domain.y[1])
+        self.assertEqual(tuple(trace.name for trace in figure.data), (
+            "Nonpolar", "Polar, uncharged", "Negatively charged", "Positively charged", "Atoms",
+        ))
+        self.assertEqual(figure.layout.yaxis.title.text, "Percentage (%)")
+        self.assertEqual(tuple(item.text for item in figure.layout.annotations), (
+            "Amino acid composition", "Atomic coordinates · 3D view",
+        ))
 
     def test_structure_triplets_never_cross_chain_boundaries(self):
         protein = gui.parse_pdb(pdb_for_chains({
@@ -202,7 +218,7 @@ class ChartTests(unittest.TestCase):
         }), "1ABC")
         _, pie = gui.create_figures(protein, "1ABC")
         self.assertEqual(len(pie.data), 0)
-        self.assertEqual(pie.layout.annotations[0].text, "No hay tripletes completos.")
+        self.assertEqual(pie.layout.annotations[0].text, "No complete triplets.")
 
     def test_metadata_and_fasta_are_escaped_in_report_markup(self):
         from biotool.reports import write_reports
@@ -216,7 +232,7 @@ class ChartTests(unittest.TestCase):
             write_reports(protein, "1ABC", figure, pie, output, auto_open=False)
             html = (output / "simple_plot.html").read_text(encoding="utf-8")
             self.assertTrue("&lt;b&gt;NOT MARKUP&lt;/b&gt;" in html)
-            self.assertTrue("cadena &lt;" in html)
+            self.assertTrue("chain &lt;" in html)
             self.assertFalse("<b>NOT MARKUP</b>" in html)
 
     @patch("urllib.request.urlopen")
@@ -229,14 +245,32 @@ class ChartTests(unittest.TestCase):
             self.assertEqual((output / "1ABC.pdb").read_text(encoding="utf-8"), text)
             for filename in ("simple_plot.html", "basic_pie_chart.html"):
                 html = (output / filename).read_text(encoding="utf-8")
-                self.assertTrue('<html lang="es" data-theme="dark">' in html)
+                self.assertTrue('<html lang="en" data-theme="dark">' in html)
                 self.assertTrue("Plotly.newPlot" in html)
                 self.assertTrue('name="viewport"' in html)
                 self.assertTrue('aria-current="page"' in html)
             overview = (output / "simple_plot.html").read_text(encoding="utf-8")
-            self.assertTrue("&gt;1ABC|cadena A\nAAA" in overview)
-            self.assertTrue("<caption>Aminoácidos observados</caption>" in overview)
+            self.assertTrue("&gt;1ABC|chain A\nAAA" in overview)
+            self.assertTrue("<caption>Observed amino acids</caption>" in overview)
+            self.assertIn("3 amino acids · 1 chain ·", overview)
+            structure = (output / "basic_pie_chart.html").read_text(encoding="utf-8")
+            self.assertIn("<h2>How to interpret these results</h2>", structure)
+            self.assertIn("<caption>Triplets by classification</caption>", structure)
+            self.assertIn("<h3>Beta turn</h3><pre>No triplets.</pre>", structure)
             browser.assert_not_called()
+
+    def test_report_fasta_handles_unnamed_and_multiple_chains_in_english(self):
+        from biotool.reports import write_reports
+
+        protein = gui.parse_pdb(pdb_for_chains({" ": ["ALA"], "B": ["GLY"]}), "1ABC")
+        figure, pie = gui.create_figures(protein, "1ABC")
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory)
+            write_reports(protein, "1ABC", figure, pie, output, auto_open=False)
+            html = (output / "simple_plot.html").read_text(encoding="utf-8")
+            self.assertIn("&gt;1ABC|chain (no identifier)\nA", html)
+            self.assertIn("&gt;1ABC|chain B\nG", html)
+            self.assertIn("2 amino acids · 2 chains ·", html)
 
     def test_report_write_failure_does_not_open_partial_results(self):
         from biotool.reports import write_reports
@@ -257,7 +291,7 @@ class ChartTests(unittest.TestCase):
             output = Path(directory)
             write_reports(protein, "1ABC", figure, pie, output, auto_open=False)
             html = (output / "basic_pie_chart.html").read_text(encoding="utf-8")
-            self.assertTrue("<p>No hay tripletes completos" in html)
+            self.assertTrue("<p>No complete triplets" in html)
 
 
 class StartupTests(unittest.TestCase):
@@ -319,7 +353,14 @@ class ThemeTests(unittest.TestCase):
             self.assertTrue(f'value="{appearance}" selected' in html)
             self.assertTrue('for="appearance"' in html)
             self.assertTrue("prefers-reduced-transparency: reduce" in html)
-        with self.assertRaises(ValueError):
+            self.assertIn('<html lang="en"', html)
+            self.assertIn('for="appearance">Appearance', html)
+            self.assertIn(">Light</option>", html)
+            self.assertIn(">Dark</option>", html)
+            self.assertIn('aria-label="Analysis reports"', html)
+            self.assertIn('aria-label="Interactive chart"', html)
+            self.assertIn("Could not update the chart. Reload the report", html)
+        with self.assertRaisesRegex(ValueError, "Unknown appearance: invalid"):
             document("Test", "1ABC", "Protein", "", "", appearance="invalid")
 
 
@@ -399,6 +440,33 @@ class DesktopTests(unittest.TestCase):
         self.assertTrue(Path("simple_plot.html").is_file())
         self.assertEqual(entry.focus_set.call_count, 2)
 
+    def test_desktop_and_catalog_labels_are_english(self):
+        self.assertEqual(self.label_text.get(), "Ready to analyze a structure.")
+        self.assertEqual(self.window.library.description.get(), "Select a protein to view its details.")
+        labels = {
+            call.kwargs["text"]
+            for name in ("Label", "Button", "Radiobutton")
+            for call in self.widgets[name].call_args_list
+            if "text" in call.kwargs
+        }
+        self.assertTrue({
+            "Protein explorer", "Appearance", "Light", "Dark", "Analyze a structure",
+            "PDB identifier", "Analyze structure", "Results in your browser",
+            "Protein library", "Analyze selection", "Refresh from RCSB", "RCSB entry",
+        }.issubset(labels))
+        self.assertEqual(
+            [call.kwargs["text"] for call in self.window.tabs.add.call_args_list],
+            ["Analyze PDB", "Local library"],
+        )
+        tree = self.widgets["Treeview"].return_value
+        self.assertEqual(
+            [call.kwargs["values"] for call in tree.insert.call_args_list],
+            [(name, "Not downloaded") for name in (
+                "Crambin", "Human ubiquitin", "Porcine insulin", "Lysozyme", "Myoglobin",
+                "Green fluorescent protein (GFP)", "Human hemoglobin",
+            )],
+        )
+
     def test_status_and_notes_wrap_when_window_resizes(self):
         self.window.resize_text(Mock(width=540))
         self.widgets["Label"].return_value.configure.assert_called_with(wraplength=444)
@@ -411,7 +479,7 @@ class DesktopTests(unittest.TestCase):
         self.assertEqual(self.browser.call_count, 2)
         self.showerror.assert_not_called()
         self.widgets["Button"].return_value.configure.assert_called_with(state="normal")
-        self.assertIn("completado", self.label_text.set.call_args.args[0])
+        self.assertIn("complete", self.label_text.set.call_args.args[0])
 
     def test_invalid_input_is_displayed_without_network_access(self):
         self.entry_text.set("../invalid")
@@ -434,7 +502,9 @@ class DesktopTests(unittest.TestCase):
                 self.showerror.assert_called_once()
                 self.browser.assert_not_called()
                 self.widgets["Button"].return_value.configure.assert_called_with(state="normal")
-                self.assertIn("No se pudo", self.label_text.set.call_args.args[0])
+                self.assertIn("Could not complete", self.label_text.set.call_args.args[0])
+                if isinstance(error, urllib.error.HTTPError):
+                    self.assertEqual(self.showerror.call_args.args[1], "RCSB returned HTTP 404.")
 
     def test_failed_file_write_does_not_open_browser(self):
         with patch.object(Path, "write_text", side_effect=PermissionError("read-only folder")):
@@ -468,7 +538,7 @@ class DesktopTests(unittest.TestCase):
         self.widgets["Tk"].return_value.after.assert_called_once_with(75, self.window.poll)
         self.analyze()
         self.executor.submit.assert_called_once()
-        self.assertIn("en curso", self.label_text.get())
+        self.assertIn("in progress", self.label_text.get())
         self.window.close()
         self.widgets["Tk"].return_value.after_cancel.assert_called_once()
         self.executor.shutdown.assert_called_once_with(wait=False, cancel_futures=True)
@@ -480,6 +550,10 @@ class DesktopTests(unittest.TestCase):
         self.window.library.show_selected()
         self.window.library.use_selected()
         self.assertTrue((self.window.library_dir / "1CRN.pdb").is_file())
+        self.assertIn(
+            ("Crambin", "On this device"),
+            [call.kwargs["values"] for call in tree.insert.call_args_list],
+        )
         self.urlopen.reset_mock()
         self.urlopen.side_effect = urllib.error.URLError("offline")
         self.window.library.use_selected()
@@ -488,7 +562,7 @@ class DesktopTests(unittest.TestCase):
 
     def test_library_empty_selection_has_visible_guidance(self):
         self.window.library.use_selected()
-        self.assertIn("Selecciona", self.window.library.description.get())
+        self.assertIn("Select", self.window.library.description.get())
         self.urlopen.assert_not_called()
 
 

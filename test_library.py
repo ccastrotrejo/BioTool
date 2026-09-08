@@ -67,7 +67,7 @@ class LocalLibraryTests(unittest.TestCase):
     def test_corrupt_local_copy_requires_explicit_refresh(self, download):
         self.directory.mkdir()
         (self.directory / "1ABC.pdb").write_text("broken", encoding="utf-8")
-        with self.assertRaisesRegex(ValueError, "Actualizar desde RCSB"):
+        with self.assertRaisesRegex(ValueError, "Refresh from RCSB"):
             load_structure("1ABC", self.directory)
         download.assert_not_called()
         download.return_value = self.text

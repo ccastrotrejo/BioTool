@@ -127,7 +127,7 @@ themePicker.addEventListener("change", async () => {
     }
   } catch (error) {
     document.getElementById("theme-status").textContent =
-      "No se pudo actualizar la gráfica. Recarga el informe para restaurar su apariencia.";
+      "Could not update the chart. Reload the report to restore its appearance.";
     console.error("BioTool theme update failed", error);
   } finally {
     themePicker.disabled = false;

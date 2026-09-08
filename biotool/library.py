@@ -40,8 +40,8 @@ def load_structure(pdb_id: str, directory: Path, *, refresh: bool = False):
             protein = parse_pdb(text, pdb_id)
         except ValueError as error:
             raise ValueError(
-                f"La copia local de {pdb_id} no es compatible. "
-                "Selecciona «Actualizar desde RCSB» en la biblioteca para reemplazarla."
+                f"The local copy of {pdb_id} is incompatible. "
+                'Select "Refresh from RCSB" in the library to replace it.'
             ) from error
         return text, protein
 

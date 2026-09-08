@@ -71,7 +71,7 @@ def probAA(text: str) -> dict[str, list[float]]:
     """Score complete non-overlapping triplets using the original propensities."""
     invalid = set(text) - Estructura.keys()
     if invalid:
-        raise ValueError(f"Aminoácidos no reconocidos: {', '.join(sorted(invalid))}")
+        raise ValueError(f"Unrecognized amino acids: {', '.join(sorted(invalid))}")
     return {
         text[i:i + 3]: [
             round(sum(Estructura[aa][axis] for aa in text[i:i + 3]) / 3, 4)
@@ -110,7 +110,7 @@ def normalize_pdb_id(value: str) -> str:
     """Validate a classic four-character PDB identifier before network or file I/O."""
     pdb_id = value.strip().upper()
     if not re.fullmatch(r"[0-9][A-Z0-9]{3}", pdb_id):
-        raise ValueError("Introduce un PDB ID de cuatro caracteres, por ejemplo 1CRN.")
+        raise ValueError("Enter a four-character PDB ID, for example 1CRN.")
     return pdb_id
 
 
@@ -148,7 +148,7 @@ def parse_pdb(text: str, pdb_id: str) -> ProteinData:
             if record == "HETATM" and residue_name != "MSE":
                 continue
             if len(line) < 54:
-                raise ValueError(f"Registro de coordenadas incompleto en la línea {line_number}.")
+                raise ValueError(f"Incomplete coordinate record on line {line_number}.")
             chain = line[21]
             atom_name = line[12:16].strip()
             atom = (chain, line[22:26], line[26], atom_name)
@@ -160,22 +160,22 @@ def parse_pdb(text: str, pdb_id: str) -> ProteinData:
             try:
                 point = tuple(float(line[start:start + 8]) for start in (30, 38, 46))
             except ValueError as error:
-                raise ValueError(f"Coordenadas inválidas en la línea {line_number}.") from error
+                raise ValueError(f"Invalid coordinates on line {line_number}.") from error
             if not all(isfinite(value) for value in point):
-                raise ValueError(f"Coordenadas no finitas en la línea {line_number}.")
+                raise ValueError(f"Non-finite coordinates on line {line_number}.")
             atoms[atom] = (priority, residue_name, point)
 
     for (chain, position, insertion, atom_name), (_, residue_name, _) in atoms.items():
         if atom_name == "CA":
             if residue_name not in AA3_TO_1:
                 raise ValueError(
-                    f"Residuo no compatible: {residue_name}, cadena {chain}, "
-                    f"posición {position.strip()}{insertion.strip()}."
+                    f"Unsupported residue: {residue_name}, chain {chain}, "
+                    f"position {position.strip()}{insertion.strip()}."
                 )
             chains[chain] = chains.get(chain, "") + AA3_TO_1[residue_name]
 
     if not chains:
-        raise ValueError("El archivo PDB no contiene aminoácidos con átomos CA.")
+        raise ValueError("The PDB file contains no amino acids with CA atoms.")
     title = " ".join(titles)
     if not title:
         molecules = re.findall(r"MOLECULE:\s*([^;]+)", " ".join(compounds))
@@ -195,9 +195,9 @@ def create_figures(protein: ProteinData, pdb_id: str, *, appearance: str = "dark
     figure = make_subplots(
         rows=2, cols=1, specs=[[{"type": "xy"}], [{"type": "scene"}]],
         row_heights=[0.4, 0.6], vertical_spacing=0.16,
-        subplot_titles=("Composición de aminoácidos", "Coordenadas atómicas · vista 3D"),
+        subplot_titles=("Amino acid composition", "Atomic coordinates · 3D view"),
     )
-    group_names = ("No polares", "Polares sin carga", "Carga negativa", "Carga positiva")
+    group_names = ("Nonpolar", "Polar, uncharged", "Negatively charged", "Positively charged")
     for index, (_, amino_acids) in enumerate(AMINO_ACID_GROUPS):
         figure.add_trace(go.Bar(
             x=[
@@ -218,8 +218,8 @@ def create_figures(protein: ProteinData, pdb_id: str, *, appearance: str = "dark
                     colorscale=[[0, colors["muted"]], [0.5, colors["accent"]],
                                 [1, colors["gold"]]],
                     opacity=0.9),
-        name="Átomos",
-        hovertemplate="x: %{x:.3f} Å<br>y: %{y:.3f} Å<br>z: %{z:.3f} Å<extra>Átomo</extra>",
+        name="Atoms",
+        hovertemplate="x: %{x:.3f} Å<br>y: %{y:.3f} Å<br>z: %{z:.3f} Å<extra>Atom</extra>",
     ), row=2, col=1)
     groups = [[], [], [], []]
     for chain_sequence in protein.chains.values():
@@ -248,7 +248,7 @@ def create_figures(protein: ProteinData, pdb_id: str, *, appearance: str = "dark
         ),
         legend=dict(orientation="h", x=0, y=1.12, yanchor="bottom"),
         xaxis=dict(tickangle=-45, automargin=True),
-        yaxis=dict(title="Porcentaje (%)", ticksuffix="%", rangemode="tozero",
+        yaxis=dict(title="Percentage (%)", ticksuffix="%", rangemode="tozero",
                    gridcolor=colors["border"], zerolinecolor=colors["border"]),
         bargap=0.25,
     )
@@ -259,20 +259,20 @@ def create_figures(protein: ProteinData, pdb_id: str, *, appearance: str = "dark
     )
     if any(groups):
         pie.add_trace(go.Pie(
-            labels=["Alfa", "Beta", "Giro beta", "Azar"],
+            labels=["Alpha", "Beta", "Beta turn", "Random"],
             values=[len(patterns) for patterns in groups],
             customdata=[" ".join(patterns) for patterns in groups],
             hole=0.6, sort=False, marker=dict(colors=group_colors),
             textinfo="percent", textposition="inside",
             insidetextfont=dict(color=colors["on_accent"]),
-            hovertemplate="%{label}<br>%{value} tripletes · %{percent}<extra></extra>",
+            hovertemplate="%{label}<br>%{value} triplets · %{percent}<extra></extra>",
         ))
         pie.add_annotation(
-            text=f"<b>{sum(map(len, groups))}</b><br>tripletes",
+            text=f"<b>{sum(map(len, groups))}</b><br>triplets",
             x=0.5, y=0.5, showarrow=False, font_size=20,
         )
     else:
-        pie.add_annotation(text="No hay tripletes completos.", showarrow=False)
+        pie.add_annotation(text="No complete triplets.", showarrow=False)
     return figure, pie
 
 
@@ -296,7 +296,7 @@ def build_guipro(pdb_id: str, output_dir: Path = Path("."), *, auto_open: bool =
 
 
 def main() -> None:
-    """Launch the Spanish-language desktop interface only when executed directly."""
+    """Launch the English-language desktop interface only when executed directly."""
     from .desktop import run
     run()
 
