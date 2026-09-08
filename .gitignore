@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+*.pyc
+*.pdb
+simple_plot.html
+basic_pie_chart.html
+/build/
+/dist/
+/*.egg-info/

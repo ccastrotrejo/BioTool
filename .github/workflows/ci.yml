@@ -1,0 +1,87 @@
+name: Tests and build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Test (${{ matrix.os }}, Python ${{ matrix.python }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            python: "3.9"
+          - os: ubuntu-latest
+            python: "3.14"
+          - os: macos-latest
+            python: "3.14"
+          - os: windows-latest
+            python: "3.14"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+          cache-dependency-path: |
+            pyproject.toml
+            requirements.txt
+      - name: Install package
+        run: python -m pip install .
+      - name: Run offline regression suite
+        run: python -m unittest discover -v
+
+  build:
+    name: Build distributions
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - name: Install build frontend
+        run: python -m pip install build
+      - name: Build source archive and wheel
+        run: python -m build
+      - name: Install built wheel
+        run: python -m pip install dist/*.whl
+      - name: Verify installed package, logo and launcher outside source checkout
+        working-directory: ${{ runner.temp }}
+        run: |
+          python - <<'PY'
+          from importlib.metadata import distribution
+          from importlib.resources import files
+          from PIL import Image
+          from biotool.app import countEstr, main
+
+          assert countEstr("AAAAAA")[1] == 2
+          with Image.open(files("biotool").joinpath("3.png")) as image:
+              image.verify()
+          launcher = next(
+              item for item in distribution("biotool").entry_points
+              if item.group == "console_scripts" and item.name == "biotool"
+          )
+          assert launcher.load() is main
+          PY
+      - name: Upload wheel and source archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: biotool-distributions
+          path: |
+            dist/*.whl
+            dist/*.tar.gz
+          if-no-files-found: error

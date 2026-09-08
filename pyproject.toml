@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "biotool"
+version = "0.1.0"
+description = "A desktop application for analyzing observed protein residues in PDB structures"
+readme = "README.md"
+requires-python = ">=3.9"
+dynamic = ["dependencies"]
+
+[project.scripts]
+biotool = "biotool.app:main"
+
+[tool.setuptools.dynamic]
+dependencies = {file = ["requirements.txt"]}
+
+[tool.setuptools.packages.find]
+include = ["biotool*"]
+
+[tool.setuptools.package-data]
+biotool = ["3.png"]
