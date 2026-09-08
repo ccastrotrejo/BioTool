@@ -7,12 +7,14 @@ The desktop interface requires a Python installation with Tk support.
 
 from collections import Counter
 from dataclasses import dataclass
-from html import escape
 from math import isfinite
 from pathlib import Path
+from typing import Optional
 import re
 import urllib.error
 import urllib.request
+
+from .theme import CHART_FONT, GROUP_PALETTES, PALETTES
 
 
 Estructura = {
@@ -57,7 +59,6 @@ AMINO_ACID_GROUPS = (
         ("H", "HIS", "Histidine", "His"),
     )),
 )
-
 
 @dataclass
 class ProteinData:
@@ -182,127 +183,122 @@ def parse_pdb(text: str, pdb_id: str) -> ProteinData:
     return ProteinData(title, chains, [point for _, _, point in atoms.values()])
 
 
-def create_figures(protein: ProteinData, pdb_id: str):
+def create_figures(protein: ProteinData, pdb_id: str, *, appearance: str = "dark"):
     """Build composition, atom and heuristic charts without opening a browser."""
     import plotly.graph_objs as go
+    from plotly.subplots import make_subplots
 
+    colors = PALETTES[appearance]
+    group_colors = GROUP_PALETTES[appearance]
     sequence = "".join(protein.chains.values())
     counts = Counter(sequence)
-    traces = []
-    for name, amino_acids in AMINO_ACID_GROUPS:
-        traces.append(go.Bar(
+    figure = make_subplots(
+        rows=2, cols=1, specs=[[{"type": "xy"}], [{"type": "scene"}]],
+        row_heights=[0.4, 0.6], vertical_spacing=0.16,
+        subplot_titles=("Composición de aminoácidos", "Coordenadas atómicas · vista 3D"),
+    )
+    group_names = ("No polares", "Polares sin carga", "Carga negativa", "Carga positiva")
+    for index, (_, amino_acids) in enumerate(AMINO_ACID_GROUPS):
+        figure.add_trace(go.Bar(
             x=[
                 f'<a href="https://www.aminoacidsguide.com/{page}.html">'
-                f"{three}({one}): {full}</a>"
+                f"{three}</a>"
                 for one, three, full, page in amino_acids
             ],
             y=[100 * counts[one] / len(sequence) for one, *_ in amino_acids],
-            name=name,
-        ))
+            customdata=[full for _, _, full, _ in amino_acids],
+            hovertemplate="%{customdata}<br>%{y:.1f}%<extra>%{fullData.name}</extra>",
+            marker_color=group_colors[index],
+            name=group_names[index],
+        ), row=1, col=1)
     x, y, z = zip(*protein.coordinates)
-    traces.append(go.Scatter3d(
+    figure.add_trace(go.Scatter3d(
         x=x, y=y, z=z, mode="markers", showlegend=False,
-        marker=dict(size=4, color=z, colorscale="Viridis"),
+        marker=dict(size=3, color=z,
+                    colorscale=[[0, colors["muted"]], [0.5, colors["accent"]],
+                                [1, colors["gold"]]],
+                    opacity=0.9),
         name="Átomos",
-    ))
-    fasta = []
+        hovertemplate="x: %{x:.3f} Å<br>y: %{y:.3f} Å<br>z: %{z:.3f} Å<extra>Átomo</extra>",
+    ), row=2, col=1)
     groups = [[], [], [], []]
-    for chain, chain_sequence in protein.chains.items():
-        fasta.append(escape(f">{pdb_id}|cadena {chain.strip() or '(sin identificador)'}"))
-        fasta.extend(chain_sequence[i:i + 80] for i in range(0, len(chain_sequence), 80))
+    for chain_sequence in protein.chains.values():
         result = countEstr(chain_sequence)
         for index in range(4):
             groups[index].extend(result[index * 2])
 
-    figure = go.Figure(data=traces, layout=dict(
-        plot_bgcolor="black", paper_bgcolor="black", font=dict(color="white"),
-        title=dict(
-            text=f"{escape(protein.title)}<br>Número total de aminoácidos: {len(sequence)}",
-            font=dict(size=15, family="Raleway"),
-        ),
-        margin=dict(r=10, t=130, b=20, l=50),
+    theme = dict(
+        template="plotly_dark" if appearance == "dark" else "plotly_white",
+        paper_bgcolor=colors["surface"], plot_bgcolor=colors["surface"],
+        font=dict(color=colors["text"], family=CHART_FONT, size=13),
+        hoverlabel=dict(bgcolor=colors["elevated"],
+                        font=dict(color=colors["text"], size=14)),
+        modebar=dict(bgcolor=colors["surface"], color=colors["muted"],
+                     activecolor=colors["accent"]),
+    )
+    figure.update_layout(
+        **theme, height=940, autosize=True,
+        margin=dict(r=24, t=120, b=24, l=56),
         scene=dict(
-            domain=dict(x=[0.52, 0.97], y=[0.3, 1]),
-            xaxis=dict(gridcolor="white"), yaxis=dict(gridcolor="white"),
-            zaxis=dict(gridcolor="white"), aspectmode="data",
+            bgcolor=colors["surface"],
+            xaxis=dict(title="x (Å)", gridcolor=colors["border"], showbackground=False),
+            yaxis=dict(title="y (Å)", gridcolor=colors["border"], showbackground=False),
+            zaxis=dict(title="z (Å)", gridcolor=colors["border"], showbackground=False),
+            aspectmode="data",
         ),
-        showlegend=True, legend=dict(x=0, y=1.2),
-        xaxis=dict(anchor="y", domain=[0.01, 0.45]),
-        yaxis=dict(anchor="x", domain=[0.26, 0.95], showgrid=False, title="Porcentaje"),
-        annotations=[dict(
-            text="FASTA (residuos observados, primer modelo):<br>" + "<br>".join(fasta)
-            + '<br><a href="https://www.bachem.com/fileadmin/user_upload/pdf/Flyers/'
-            'Periodic_Chart_Amino_Acids.pdf"><b>Tablas de Aminoácidos</b></a>',
-            showarrow=False, xref="paper", yref="paper", x=1, y=0,
-        )],
-    ))
-    labels = [
-        f"{name}: {' '.join(patterns)}"
-        for name, patterns in zip(("Alfa", "Beta", "Beta giro", "Azar"), groups)
-    ]
+        legend=dict(orientation="h", x=0, y=1.12, yanchor="bottom"),
+        xaxis=dict(tickangle=-45, automargin=True),
+        yaxis=dict(title="Porcentaje (%)", ticksuffix="%", rangemode="tozero",
+                   gridcolor=colors["border"], zerolinecolor=colors["border"]),
+        bargap=0.25,
+    )
     pie = go.Figure()
-    pie.update_layout(title=dict(
-        text="Clasificación heurística de tripletes (no experimental)"
-        "<br>Tripletes no solapados por cadena; se omiten residuos finales incompletos."
-    ))
+    pie.update_layout(
+        **theme, height=440, margin=dict(l=24, r=24, t=24, b=72),
+        legend=dict(orientation="h", x=0.5, xanchor="center", y=-0.12),
+    )
     if any(groups):
-        pie.add_trace(go.Pie(labels=labels, values=[len(patterns) for patterns in groups]))
+        pie.add_trace(go.Pie(
+            labels=["Alfa", "Beta", "Giro beta", "Azar"],
+            values=[len(patterns) for patterns in groups],
+            customdata=[" ".join(patterns) for patterns in groups],
+            hole=0.6, sort=False, marker=dict(colors=group_colors),
+            textinfo="percent", textposition="inside",
+            insidetextfont=dict(color=colors["on_accent"]),
+            hovertemplate="%{label}<br>%{value} tripletes · %{percent}<extra></extra>",
+        ))
+        pie.add_annotation(
+            text=f"<b>{sum(map(len, groups))}</b><br>tripletes",
+            x=0.5, y=0.5, showarrow=False, font_size=20,
+        )
     else:
         pie.add_annotation(text="No hay tripletes completos.", showarrow=False)
     return figure, pie
 
 
-def build_guipro(pdb_id: str, output_dir: Path = Path("."), *, auto_open: bool = True) -> None:
+def build_guipro(pdb_id: str, output_dir: Path = Path("."), *, auto_open: bool = True,
+                 library_dir: Optional[Path] = None, refresh: bool = False,
+                 appearance: str = "dark") -> None:
     """Download, analyze and save the PDB and both self-contained HTML charts."""
     pdb_id = normalize_pdb_id(pdb_id)
-    text = download_pdb(pdb_id)
-    protein = parse_pdb(text, pdb_id)
-    figure, pie = create_figures(protein, pdb_id)
+    if library_dir is None:
+        text = download_pdb(pdb_id)
+        protein = parse_pdb(text, pdb_id)
+    else:
+        from .library import load_structure
+        text, protein = load_structure(pdb_id, library_dir, refresh=refresh)
+    figure, pie = create_figures(protein, pdb_id, appearance=appearance)
+    from .reports import write_reports
+
     (output_dir / f"{pdb_id}.pdb").write_text(text, encoding="utf-8")
-    figure.write_html(str(output_dir / "simple_plot.html"), auto_open=auto_open)
-    pie.write_html(str(output_dir / "basic_pie_chart.html"), auto_open=auto_open)
+    write_reports(protein, pdb_id, figure, pie, output_dir, auto_open=auto_open,
+                  appearance=appearance)
 
 
 def main() -> None:
     """Launch the Spanish-language desktop interface only when executed directly."""
-    import tkinter as tk
-    from tkinter import messagebox
-    from PIL import Image, ImageTk
-
-    root = tk.Tk()
-    root.title("BioTool")
-    with Image.open(Path(__file__).with_name("3.png")) as image:
-        logo = ImageTk.PhotoImage(image)
-    tk.Label(root, image=logo).pack(side="top", fill="both", expand=True)
-    tk.Label(root, text="Herramienta bioinformática para analizar proteínas").pack()
-    tk.Label(root, text="PDB ID:").pack()
-    entry_text = tk.StringVar(root)
-    entry = tk.Entry(root, width=10, textvariable=entry_text)
-    entry.pack()
-    label_text = tk.StringVar(root)
-
-    def analyze() -> None:
-        button.configure(state="disabled")
-        label_text.set("Descargando y analizando...")
-        root.update_idletasks()
-        try:
-            build_guipro(entry_text.get())
-        except urllib.error.HTTPError as error:
-            label_text.set("No se pudo descargar el archivo PDB.")
-            messagebox.showerror("BioTool", f"RCSB respondió con HTTP {error.code}.", parent=root)
-        except (OSError, ValueError) as error:
-            label_text.set("No se pudo completar el análisis.")
-            messagebox.showerror("BioTool", str(error), parent=root)
-        else:
-            label_text.set("Análisis completado. Gráficas HTML guardadas en la carpeta actual.")
-        finally:
-            button.configure(state="normal")
-
-    button = tk.Button(root, text="Desplegar Información", command=analyze, height=3, width=35)
-    button.pack()
-    tk.Label(root, textvariable=label_text).pack()
-    entry.focus_set()
-    root.mainloop()
+    from .desktop import run
+    run()
 
 
 if __name__ == "__main__":
