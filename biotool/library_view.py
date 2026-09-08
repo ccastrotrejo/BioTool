@@ -18,10 +18,10 @@ class LibraryView:
         self.frame = ttk.Frame(parent, padding=24, style="Surface.TFrame")
         self.frame.columnconfigure(0, weight=1)
         self.frame.rowconfigure(2, weight=1)
-        ttk.Label(self.frame, text="Biblioteca de proteínas", style="Heading.TLabel").grid(
+        ttk.Label(self.frame, text="Protein library", style="Heading.TLabel").grid(
             row=0, column=0, sticky="w", pady=(0, 8))
         ttk.Label(
-            self.frame, text="Elige un ejemplo. Tras la primera descarga funciona sin internet.",
+            self.frame, text="Choose an example. After the first download, it works offline.",
             style="Hint.TLabel", wraplength=420,
         ).grid(row=1, column=0, sticky="w", pady=(0, 16))
         listing = ttk.Frame(self.frame, style="Surface.TFrame")
@@ -33,8 +33,8 @@ class LibraryView:
             height=6,
         )
         self.tree.heading("#0", text="PDB")
-        self.tree.heading("name", text="Proteína")
-        self.tree.heading("saved", text="Disponibilidad")
+        self.tree.heading("name", text="Protein")
+        self.tree.heading("saved", text="Availability")
         self.tree.column("#0", width=64, minwidth=56, stretch=False)
         self.tree.column("name", width=220, minwidth=120)
         self.tree.column("saved", width=120, minwidth=108, stretch=False)
@@ -42,28 +42,28 @@ class LibraryView:
         scrollbar = ttk.Scrollbar(listing, orient="vertical", command=self.tree.yview)
         scrollbar.grid(row=0, column=1, sticky="ns")
         self.tree.configure(yscrollcommand=scrollbar.set)
-        self.description = tk.StringVar(value="Selecciona una proteína para ver sus detalles.")
+        self.description = tk.StringVar(value="Select a protein to view its details.")
         description = ttk.Label(
             self.frame, textvariable=self.description, style="Surface.TLabel",
             wraplength=420, justify="left",
         )
         description.grid(row=3, column=0, sticky="ew", pady=16)
         self.primary = ttk.Button(
-            self.frame, text="Analizar selección", style="Analyze.TButton",
+            self.frame, text="Analyze selection", style="Analyze.TButton",
             command=self.use_selected, state="disabled",
         )
         self.primary.grid(row=4, column=0, sticky="ew", pady=(0, 8))
         actions = ttk.Frame(self.frame, style="Surface.TFrame")
         actions.grid(row=5, column=0, sticky="ew")
         self.update = ttk.Button(
-            actions, text="Actualizar desde RCSB", command=lambda: self.use_selected(refresh=True),
+            actions, text="Refresh from RCSB", command=lambda: self.use_selected(refresh=True),
             state="disabled",
         )
         self.update.pack(side="left")
-        self.source = ttk.Button(actions, text="Ficha RCSB", command=self.open_source,
+        self.source = ttk.Button(actions, text="RCSB entry", command=self.open_source,
                                  state="disabled")
         self.source.pack(side="right")
-        location = ttk.Label(self.frame, text=f"Archivos locales: {directory}",
+        location = ttk.Label(self.frame, text=f"Local files: {directory}",
                              style="Hint.TLabel", wraplength=420)
         location.grid(row=6, column=0, sticky="ew", pady=(16, 0))
         self.frame.bind("<Configure>", lambda event: (
@@ -81,9 +81,9 @@ class LibraryView:
         self.tree.delete(*self.tree.get_children())
         examples = {example.pdb_id: example for example in EXAMPLES}
         for pdb_id in list(examples) + sorted(local - examples.keys()):
-            name = examples[pdb_id].name if pdb_id in examples else "Estructura guardada"
+            name = examples[pdb_id].name if pdb_id in examples else "Saved structure"
             self.tree.insert("", "end", iid=pdb_id, text=pdb_id,
-                             values=(name, "En este equipo" if pdb_id in local else "Por descargar"))
+                             values=(name, "On this device" if pdb_id in local else "Not downloaded"))
         if selected:
             self.tree.selection_set(selected[0])
 
@@ -93,18 +93,18 @@ class LibraryView:
         for button in (self.primary, self.update, self.source):
             button.configure(state=state)
         if not selection:
-            self.description.set("Selecciona una proteína para ver sus detalles.")
+            self.description.set("Select a protein to view its details.")
             return
         example = next((item for item in EXAMPLES if item.pdb_id == selection[0]), None)
         self.description.set(
             f"{example.organism}\n{example.description}" if example
-            else f"{selection[0]} · Copia local. Consulta su ficha RCSB para conocer su contexto."
+            else f"{selection[0]} · Local copy. See its RCSB entry for context."
         )
 
     def use_selected(self, event=None, *, refresh=False):
         selection = self.tree.selection()
         if not selection:
-            self.description.set("Selecciona una proteína de la lista antes de analizar.")
+            self.description.set("Select a protein from the list before analyzing.")
             self.tree.focus_set()
             return
         self.analyze(selection[0], refresh=refresh)

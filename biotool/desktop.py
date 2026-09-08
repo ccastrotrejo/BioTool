@@ -26,7 +26,7 @@ class Desktop:
         self.library_dir = default_library_dir()
         self.appearance = tk.StringVar(root, value="dark")
         self.entry_text = tk.StringVar(root)
-        self.label_text = tk.StringVar(root, value="Listo para analizar una estructura.")
+        self.label_text = tk.StringVar(root, value="Ready to analyze a structure.")
         self.family = font.nametofont("TkDefaultFont").actual("family")
         self.style = ttk.Style(root)
         root.title("BioTool")
@@ -44,10 +44,10 @@ class Desktop:
         self.tabs.grid(row=1, column=0, sticky="nsew", pady=(16, 0))
         self.form = ttk.Frame(self.tabs, padding=24, style="Surface.TFrame")
         self.form.columnconfigure(0, weight=1)
-        self.tabs.add(self.form, text="Analizar PDB")
+        self.tabs.add(self.form, text="Analyze PDB")
         self.build_form()
         self.library = LibraryView(self.tabs, self.library_dir, self.analyze_selection)
-        self.tabs.add(self.library.frame, text="Biblioteca local")
+        self.tabs.add(self.library.frame, text="Local library")
         self.status = ttk.Label(content, textvariable=self.label_text,
                                 style="Status.TLabel", wraplength=560)
         self.status.grid(row=2, column=0, sticky="ew", pady=(16, 8))
@@ -69,40 +69,40 @@ class Desktop:
             row=0, column=0, rowspan=2, padx=(0, 16))
         ttk.Label(header, text="BioTool", style="Title.TLabel").grid(
             row=0, column=1, sticky="sw")
-        ttk.Label(header, text="Explorador de proteínas", style="Muted.TLabel").grid(
+        ttk.Label(header, text="Protein explorer", style="Muted.TLabel").grid(
             row=1, column=1, sticky="nw")
         controls = ttk.Frame(header, style="Bio.TFrame")
         controls.grid(row=2, column=0, columnspan=2, sticky="e", pady=(16, 0))
-        ttk.Label(controls, text="Apariencia", style="Muted.TLabel").pack(side="left", padx=8)
-        for label, value in (("Claro", "light"), ("Oscuro", "dark")):
+        ttk.Label(controls, text="Appearance", style="Muted.TLabel").pack(side="left", padx=8)
+        for label, value in (("Light", "light"), ("Dark", "dark")):
             ttk.Radiobutton(controls, text=label, value=value, variable=self.appearance,
                             command=self.change_theme).pack(side="left")
 
     def build_form(self):
-        ttk.Label(self.form, text="Analizar una estructura", style="Heading.TLabel").grid(
+        ttk.Label(self.form, text="Analyze a structure", style="Heading.TLabel").grid(
             row=0, column=0, sticky="w", pady=(0, 24))
-        ttk.Label(self.form, text="Identificador PDB", style="Surface.TLabel").grid(
+        ttk.Label(self.form, text="PDB identifier", style="Surface.TLabel").grid(
             row=1, column=0, sticky="w", pady=(0, 8))
         self.entry = ttk.Entry(self.form, textvariable=self.entry_text,
                                font=(self.family, TYPE["heading"]), style="Pdb.TEntry")
         self.entry.grid(row=2, column=0, sticky="ew")
         self.entry.bind("<Return>", self.analyze)
         ttk.Label(
-            self.form, text="Por ejemplo, 1CRN. Se descarga una vez y se guarda en tu biblioteca.",
+            self.form, text="For example, 1CRN. Downloaded once and saved in your library.",
             style="Hint.TLabel", wraplength=420,
         ).grid(row=3, column=0, sticky="w", pady=(8, 16))
-        self.button = ttk.Button(self.form, text="Analizar estructura",
+        self.button = ttk.Button(self.form, text="Analyze structure",
                                  style="Analyze.TButton", command=self.analyze)
         self.button.grid(row=4, column=0, sticky="ew")
         ttk.Separator(self.form).grid(row=5, column=0, sticky="ew", pady=24)
-        ttk.Label(self.form, text="Resultados en tu navegador", style="Heading.TLabel").grid(
+        ttk.Label(self.form, text="Results in your browser", style="Heading.TLabel").grid(
             row=6, column=0, sticky="w", pady=(0, 8))
         self.notes = ttk.Label(
             self.form, style="Hint.TLabel", wraplength=420, justify="left",
-            text="Composición de aminoácidos, coordenadas 3D y secuencia observada.\n\n"
-            "La clasificación de tripletes es heurística; no es una predicción validada.\n\n"
-            "El PDB y dos informes HTML se guardan en la carpeta actual. "
-            "Un nuevo análisis reemplaza los informes anteriores.",
+            text="Amino acid composition, 3D coordinates, and observed sequence.\n\n"
+            "Triplet classification is a heuristic, not a validated prediction.\n\n"
+            "The PDB file and two HTML reports are saved in the current folder. "
+            "A new analysis replaces the previous reports.",
         )
         self.notes.grid(row=7, column=0, sticky="ew")
 
@@ -117,7 +117,7 @@ class Desktop:
 
     def analyze_selection(self, pdb_id, *, refresh=False):
         if self.future is not None:
-            self.label_text.set("Hay un análisis en curso. Espera a que termine.")
+            self.label_text.set("An analysis is in progress. Please wait for it to finish.")
             return
         self.entry_text.set(pdb_id)
         self.tabs.select(self.form)
@@ -125,7 +125,7 @@ class Desktop:
 
     def analyze(self, event=None, *, refresh=False):
         if self.future is not None:
-            self.label_text.set("Hay un análisis en curso. Espera a que termine.")
+            self.label_text.set("An analysis is in progress. Please wait for it to finish.")
             return
         try:
             pdb_id = app.normalize_pdb_id(self.entry_text.get())
@@ -135,7 +135,7 @@ class Desktop:
         self.entry_text.set(pdb_id)
         self.button.configure(state="disabled")
         self.entry.configure(state="disabled")
-        self.label_text.set(f"Analizando {pdb_id} · biblioteca local / RCSB…")
+        self.label_text.set(f"Analyzing {pdb_id} · local library / RCSB…")
         self.progress.grid()
         self.progress.start(12)
         self.future = self.executor.submit(
@@ -155,7 +155,7 @@ class Desktop:
         except (OSError, ValueError) as error:
             self.show_error(error)
         else:
-            self.label_text.set("Análisis completado. Informes guardados en la carpeta actual.")
+            self.label_text.set("Analysis complete. Reports saved in the current folder.")
             for filename in ("simple_plot.html", "basic_pie_chart.html"):
                 webbrowser.open(Path(filename).resolve().as_uri())
         finally:
@@ -167,8 +167,8 @@ class Desktop:
             self.entry.focus_set()
 
     def show_error(self, error):
-        self.label_text.set("No se pudo completar el análisis. Puedes corregirlo y reintentar.")
-        detail = f"RCSB respondió con HTTP {error.code}." if isinstance(
+        self.label_text.set("Could not complete the analysis. Fix the issue and try again.")
+        detail = f"RCSB returned HTTP {error.code}." if isinstance(
             error, urllib.error.HTTPError) else str(error)
         messagebox.showerror("BioTool", detail, parent=self.root)
         self.entry.focus_set()

@@ -1,6 +1,6 @@
 # BioTool
 
-A Spanish-language Python desktop application for exploring protein structures
+An English-language Python desktop application for exploring protein structures
 from the RCSB Protein Data Bank.
 
 ## Install and run
@@ -30,8 +30,8 @@ biotool
 ```
 
 `python gui.py` also launches the application from the checkout. Enter a
-four-character PDB ID, such as `1CRN`, and select **Analizar estructura** or
-press Enter. Alternatively, open **Biblioteca local** and select a starter
+four-character PDB ID, such as `1CRN`, and select **Analyze structure** or
+press Enter. Alternatively, open **Local library** and select a starter
 protein. An internet connection is required only for the first download or
 an explicit refresh; saved structures can be analyzed offline.
 
@@ -41,11 +41,11 @@ Plotly and open in your browser. Running another analysis replaces the two chart
 files.
 
 The desktop window includes input guidance, analysis status, and a reminder of
-the output behavior. The linked, Spanish-language HTML reports include stacked
+the output behavior. The linked, English-language HTML reports include stacked
 composition/3D charts, a readable per-chain FASTA section, composition and triplet
 count tables, and an explanation of the heuristic's limitations. Reports adapt
 to the browser width; the interactive charts also include image export controls.
-Use **Claro / Oscuro** to switch the desktop appearance. Newly generated reports
+Use **Light / Dark** to switch the desktop appearance. Newly generated reports
 start in that appearance and also have their own light/dark selector. The palettes
 live in `biotool/theme.py`. Reports use Liquid Glass-inspired translucent surfaces
 and backdrop blur, with opaque fallbacks for unsupported browsers and reduced
@@ -57,7 +57,7 @@ Both desktop themes explicitly style controls to avoid mixed system colors.
 
 The library is a small educational catalog, not a download of the entire PDB.
 Catalog names and descriptions are bundled with the application; coordinates
-are downloaded from RCSB only when you choose a structure. **Ficha RCSB** opens
+are downloaded from RCSB only when you choose a structure. **RCSB entry** opens
 the original entry and citation information.
 
 The starter catalog includes [crambin (1CRN)](https://www.rcsb.org/structure/1CRN),
@@ -79,8 +79,8 @@ is saved in the per-user library after it passes BioTool's parser:
 - Windows: `%LOCALAPPDATA%/BioTool/pdb`
 - Linux: `$XDG_DATA_HOME/BioTool/pdb`, or `~/.local/share/BioTool/pdb`
 
-**En este equipo** identifies saved files; **Por descargar** needs internet.
-Saved files are reused without network access. **Actualizar desde RCSB**
+**On this device** identifies saved files; **Not downloaded** needs internet.
+Saved files are reused without network access. **Refresh from RCSB**
 explicitly downloads a fresh copy. Failed or incompatible downloads never replace
 the previous file. A corrupt local copy produces an error with refresh guidance
 rather than silently falling back to the network.
@@ -92,6 +92,10 @@ download may finish in the worker before the process exits.
 The Python `build_guipro` function preserves its uncached default for existing
 callers. Pass `library_dir=Path(...)` to opt into caching and `refresh=True` to
 replace a cached structure. `appearance="light"` generates light-theme reports.
+
+The interface and reports use English. Existing Python API names and the
+classification values returned by `estrAA` (`alfa`, `beta`, `giro beta`, `azar`)
+remain unchanged for compatibility; charts display English labels.
 
 ### PDB sources and limitations
 
