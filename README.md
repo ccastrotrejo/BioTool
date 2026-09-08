@@ -9,6 +9,10 @@ Use Python 3.9 or newer with Tk support. On Debian/Ubuntu, install the
 `python3-tk` system package if your Python installation does not include Tk.
 Other Python distributions may also require installing their Tk component.
 
+On recent macOS versions, Apple's bundled Python/Tk 8.5 can display an empty
+window. Use a current Python distribution with Tk instead, for example
+`brew install python-tk@3.14`, and create the environment with `python3.14`.
+
 Create and activate a virtual environment:
 
 ```sh
@@ -25,14 +29,84 @@ python -m pip install .
 biotool
 ```
 
-`python gui.py` also launches the application from the checkout. An internet
-connection is required to download structures. Enter a four-character PDB ID,
-such as `1CRN`, and select **Desplegar Información**.
+`python gui.py` also launches the application from the checkout. Enter a
+four-character PDB ID, such as `1CRN`, and select **Analizar estructura** or
+press Enter. Alternatively, open **Biblioteca local** and select a starter
+protein. An internet connection is required only for the first download or
+an explicit refresh; saved structures can be analyzed offline.
 
 BioTool saves the downloaded `<PDB_ID>.pdb`, `simple_plot.html`, and
 `basic_pie_chart.html` in the current working directory. The HTML charts include
 Plotly and open in your browser. Running another analysis replaces the two chart
 files.
+
+The desktop window includes input guidance, analysis status, and a reminder of
+the output behavior. The linked, Spanish-language HTML reports include stacked
+composition/3D charts, a readable per-chain FASTA section, composition and triplet
+count tables, and an explanation of the heuristic's limitations. Reports adapt
+to the browser width; the interactive charts also include image export controls.
+Use **Claro / Oscuro** to switch the desktop appearance. Newly generated reports
+start in that appearance and also have their own light/dark selector. The palettes
+live in `biotool/theme.py`. Reports use Liquid Glass-inspired translucent surfaces
+and backdrop blur, with opaque fallbacks for unsupported browsers and reduced
+transparency preferences. Tkinter uses a matching opaque, glass-inspired theme:
+it does not support Apple's native Liquid Glass refraction or background blur.
+Both desktop themes explicitly style controls to avoid mixed system colors.
+
+## Local protein library
+
+The library is a small educational catalog, not a download of the entire PDB.
+Catalog names and descriptions are bundled with the application; coordinates
+are downloaded from RCSB only when you choose a structure. **Ficha RCSB** opens
+the original entry and citation information.
+
+The starter catalog includes [crambin (1CRN)](https://www.rcsb.org/structure/1CRN),
+[ubiquitin (1UBQ)](https://www.rcsb.org/structure/1UBQ),
+[porcine insulin (4INS)](https://www.rcsb.org/structure/4INS),
+[lysozyme (1LYZ)](https://www.rcsb.org/structure/1LYZ),
+[myoglobin (1MBN)](https://www.rcsb.org/structure/1MBN),
+[GFP (1GFL)](https://www.rcsb.org/structure/1GFL), and
+[hemoglobin (2HHB)](https://www.rcsb.org/structure/2HHB).
+These classic-PDB downloads were compatible with BioTool's parser when selected.
+Catalog residue counts describe observed residues across the file's first-model
+chains, not complete biological sequences or generated biological assemblies.
+Heme, zinc and other non-MSE HETATM records are excluded from the visualization.
+
+Every structure analyzed through the desktop, including a manually entered ID,
+is saved in the per-user library after it passes BioTool's parser:
+
+- macOS: `~/Library/Application Support/BioTool/pdb`
+- Windows: `%LOCALAPPDATA%/BioTool/pdb`
+- Linux: `$XDG_DATA_HOME/BioTool/pdb`, or `~/.local/share/BioTool/pdb`
+
+**En este equipo** identifies saved files; **Por descargar** needs internet.
+Saved files are reused without network access. **Actualizar desde RCSB**
+explicitly downloads a fresh copy. Failed or incompatible downloads never replace
+the previous file. A corrupt local copy produces an error with refresh guidance
+rather than silently falling back to the network.
+
+Downloads and report generation run in a worker so the desktop remains usable.
+Only one analysis runs at a time. Closing the window stops UI updates; an active
+download may finish in the worker before the process exits.
+
+The Python `build_guipro` function preserves its uncached default for existing
+callers. Pass `library_dir=Path(...)` to opt into caching and `refresh=True` to
+replace a cached structure. `appearance="light"` generates light-theme reports.
+
+### PDB sources and limitations
+
+Downloads follow the [RCSB file-download services](https://www.rcsb.org/docs/programmatic-access/file-download-services).
+PDB archive data is [CC0](https://www.wwpdb.org/about/usage-policies); please
+[cite the structure authors and PDB entry](https://www.wwpdb.org/about/cite-us)
+when using these structures in your work. This does not imply that website
+illustrations or articles share the archive's license.
+
+PDBx/mmCIF is the primary archive format. BioTool currently supports only
+[entries available in legacy PDB format](https://www.rcsb.org/docs/general-help/structures-without-legacy-pdb-format-files).
+It does not yet accept mmCIF or
+[extended PDB identifiers](https://www.wwpdb.org/documentation/pdb-id-extension-faq).
+The starter catalog is therefore deliberately small and compatible, rather
+than a claim of support for every structure in the archive.
 
 ## Analysis scope
 

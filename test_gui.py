@@ -1,6 +1,7 @@
 """Offline regression coverage: python -m unittest -v."""
 
 from contextlib import ExitStack
+from concurrent.futures import Future
 import os
 from pathlib import Path
 import subprocess
@@ -190,9 +191,10 @@ class ChartTests(unittest.TestCase):
         self.assertEqual(tuple(pie.data[0].values), (2, 1, 0, 0))
         self.assertEqual(len(figure.data[4].x), 9)
         self.assertEqual(figure.data[4].mode, "markers")
-        self.assertIn("AAAAAA", figure.layout.annotations[0].text)
-        self.assertIn("VVV", figure.layout.annotations[0].text)
-        self.assertIn("cadena B", figure.layout.annotations[0].text)
+        self.assertEqual(tuple(pie.data[0].labels), ("Alfa", "Beta", "Giro beta", "Azar"))
+        self.assertEqual(tuple(pie.data[0].customdata), ("AAA AAA", "VVV", "", ""))
+        self.assertEqual(pie.data[0].hole, 0.6)
+        self.assertGreater(figure.layout.yaxis.domain[0], figure.layout.scene.domain.y[1])
 
     def test_structure_triplets_never_cross_chain_boundaries(self):
         protein = gui.parse_pdb(pdb_for_chains({
@@ -202,13 +204,20 @@ class ChartTests(unittest.TestCase):
         self.assertEqual(len(pie.data), 0)
         self.assertEqual(pie.layout.annotations[0].text, "No hay tripletes completos.")
 
-    def test_metadata_is_escaped_in_chart_markup(self):
+    def test_metadata_and_fasta_are_escaped_in_report_markup(self):
+        from biotool.reports import write_reports
+
         protein = gui.parse_pdb(
             "TITLE     <b>NOT MARKUP</b>\n" + atom_line(chain="<"), "1ABC",
         )
-        figure, _ = gui.create_figures(protein, "1ABC")
-        self.assertIn("&lt;b&gt;NOT MARKUP&lt;/b&gt;", figure.layout.title.text)
-        self.assertIn("cadena &lt;", figure.layout.annotations[0].text)
+        figure, pie = gui.create_figures(protein, "1ABC")
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory)
+            write_reports(protein, "1ABC", figure, pie, output, auto_open=False)
+            html = (output / "simple_plot.html").read_text(encoding="utf-8")
+            self.assertTrue("&lt;b&gt;NOT MARKUP&lt;/b&gt;" in html)
+            self.assertTrue("cadena &lt;" in html)
+            self.assertFalse("<b>NOT MARKUP</b>" in html)
 
     @patch("urllib.request.urlopen")
     def test_end_to_end_writes_pdb_and_valid_html_without_browser(self, urlopen):
@@ -220,9 +229,35 @@ class ChartTests(unittest.TestCase):
             self.assertEqual((output / "1ABC.pdb").read_text(encoding="utf-8"), text)
             for filename in ("simple_plot.html", "basic_pie_chart.html"):
                 html = (output / filename).read_text(encoding="utf-8")
-                self.assertIn("<html>", html)
-                self.assertIn("Plotly.newPlot", html)
+                self.assertTrue('<html lang="es" data-theme="dark">' in html)
+                self.assertTrue("Plotly.newPlot" in html)
+                self.assertTrue('name="viewport"' in html)
+                self.assertTrue('aria-current="page"' in html)
+            overview = (output / "simple_plot.html").read_text(encoding="utf-8")
+            self.assertTrue("&gt;1ABC|cadena A\nAAA" in overview)
+            self.assertTrue("<caption>Aminoácidos observados</caption>" in overview)
             browser.assert_not_called()
+
+    def test_report_write_failure_does_not_open_partial_results(self):
+        from biotool.reports import write_reports
+
+        protein = gui.parse_pdb(pdb_for_chains({"A": ["ALA"] * 3}), "1ABC")
+        figure, pie = gui.create_figures(protein, "1ABC")
+        with patch.object(Path, "write_text", side_effect=[None, PermissionError("read-only")]):
+            with patch("webbrowser.open") as browser, self.assertRaises(PermissionError):
+                write_reports(protein, "1ABC", figure, pie, Path("."), auto_open=True)
+            browser.assert_not_called()
+
+    def test_short_chains_have_an_accessible_empty_state(self):
+        from biotool.reports import write_reports
+
+        protein = gui.parse_pdb(pdb_for_chains({"A": ["ALA"]}), "1ABC")
+        figure, pie = gui.create_figures(protein, "1ABC")
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory)
+            write_reports(protein, "1ABC", figure, pie, output, auto_open=False)
+            html = (output / "basic_pie_chart.html").read_text(encoding="utf-8")
+            self.assertTrue("<p>No hay tripletes completos" in html)
 
 
 class StartupTests(unittest.TestCase):
@@ -235,6 +270,59 @@ class StartupTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
 
 
+class ThemeTests(unittest.TestCase):
+    def test_text_and_action_colors_meet_aa_contrast(self):
+        from biotool.theme import GROUP_PALETTES, PALETTES
+
+        def luminance(color):
+            channels = [int(color[i:i + 2], 16) / 255 for i in (1, 3, 5)]
+            linear = [
+                value / 12.92 if value <= 0.04045 else ((value + 0.055) / 1.055) ** 2.4
+                for value in channels
+            ]
+            return sum(value * weight for value, weight in zip(linear, (0.2126, 0.7152, 0.0722)))
+
+        for appearance, colors in PALETTES.items():
+            pairs = [
+                (colors[text], colors[surface])
+                for text in ("text", "muted", "accent", "gold")
+                for surface in ("background", "surface", "elevated")
+            ] + [(colors["on_accent"], color)
+                 for color in (*GROUP_PALETTES[appearance], colors["accent_hover"])]
+            for foreground, background in pairs:
+                with self.subTest(theme=appearance, foreground=foreground, background=background):
+                    bright, dark = sorted((luminance(foreground), luminance(background)), reverse=True)
+                    self.assertGreaterEqual((bright + 0.05) / (dark + 0.05), 4.5)
+
+    def test_reports_and_charts_share_the_desktop_palette(self):
+        from biotool.reports import STYLE
+        from biotool.theme import GROUP_PALETTES, PALETTES
+
+        protein = gui.parse_pdb(pdb_for_chains({"A": ["ALA"] * 3}), "1ABC")
+        for appearance, colors in PALETTES.items():
+            with self.subTest(theme=appearance):
+                for name, value in colors.items():
+                    self.assertIn(f"--{name.replace('_', '-')}: {value}", STYLE)
+                figure, pie = gui.create_figures(protein, "1ABC", appearance=appearance)
+                for chart in (figure, pie):
+                    self.assertEqual(chart.layout.paper_bgcolor, colors["surface"])
+                    self.assertEqual(chart.layout.font.color, colors["text"])
+                self.assertEqual(tuple(pie.data[0].marker.colors), GROUP_PALETTES[appearance])
+                self.assertEqual(pie.data[0].insidetextfont.color, colors["on_accent"])
+
+    def test_report_theme_selection_and_reduced_transparency(self):
+        from biotool.reports import document
+
+        for appearance in ("light", "dark"):
+            html = document("Test", "1ABC", "Protein", "", "", appearance=appearance)
+            self.assertTrue(f'data-theme="{appearance}"' in html)
+            self.assertTrue(f'value="{appearance}" selected' in html)
+            self.assertTrue('for="appearance"' in html)
+            self.assertTrue("prefers-reduced-transparency: reduce" in html)
+        with self.assertRaises(ValueError):
+            document("Test", "1ABC", "Protein", "", "", appearance="invalid")
+
+
 class DesktopTests(unittest.TestCase):
     def setUp(self):
         stack = ExitStack()
@@ -245,12 +333,25 @@ class DesktopTests(unittest.TestCase):
         os.chdir(directory)
         self.widgets = {
             name: stack.enter_context(patch(f"tkinter.{name}"))
-            for name in ("Tk", "Label", "Entry", "StringVar", "Button")
+            for name in ("Tk", "StringVar")
         }
-        self.entry_text = Mock()
-        self.entry_text.get.return_value = "1ABC"
-        self.label_text = Mock()
-        self.widgets["StringVar"].side_effect = [self.entry_text, self.label_text]
+        self.widgets.update({
+            name: stack.enter_context(patch(f"tkinter.ttk.{name}"))
+            for name in ("Frame", "Label", "Entry", "Button", "Separator", "Style",
+                         "Notebook", "Radiobutton", "Treeview", "Scrollbar", "Progressbar")
+        })
+        self.widgets["Treeview"].return_value.selection.return_value = ()
+        self.widgets["Treeview"].return_value.get_children.return_value = ()
+        default_font = stack.enter_context(patch("tkinter.font.nametofont"))
+        default_font.return_value.actual.return_value = "Arial"
+        def string_variable(master=None, value=""):
+            state = [value]
+            variable = Mock()
+            variable.get.side_effect = lambda: state[0]
+            variable.set.side_effect = lambda value: state.__setitem__(0, value)
+            return variable
+
+        self.widgets["StringVar"].side_effect = string_variable
         self.open_image = stack.enter_context(patch("PIL.Image.open"))
         stack.enter_context(patch("PIL.ImageTk.PhotoImage"))
         self.showerror = stack.enter_context(patch("tkinter.messagebox.showerror"))
@@ -259,12 +360,48 @@ class DesktopTests(unittest.TestCase):
         self.urlopen.return_value.__enter__.return_value.read.return_value = (
             pdb_for_chains({"A": ["ALA"] * 3}).encode("utf-8")
         )
-        gui.main()
-        self.analyze = self.widgets["Button"].call_args.kwargs["command"]
+        from biotool import desktop
+
+        stack.enter_context(patch("biotool.desktop.default_library_dir",
+                                  return_value=Path(directory) / "library"))
+        executor = stack.enter_context(patch("biotool.desktop.ThreadPoolExecutor"))
+        self.executor = executor.return_value
+
+        def submit(function, *args, **kwargs):
+            future = Future()
+            try:
+                future.set_result(function(*args, **kwargs))
+            except Exception as error:
+                future.set_exception(error)
+            return future
+
+        self.executor.submit.side_effect = submit
+        self.window = desktop.Desktop(self.widgets["Tk"].return_value)
+        self.entry_text = self.window.entry_text
+        self.entry_text.set("1ABC")
+        self.label_text = self.window.label_text
+        self.analyze = self.window.analyze
 
     def test_lifecycle_and_asset_path_are_independent_of_working_directory(self):
-        self.widgets["Tk"].return_value.mainloop.assert_called_once()
         self.open_image.assert_called_once_with(Path(gui.__file__).with_name("3.png"))
+        self.widgets["Style"].return_value.theme_use.assert_called_once_with("clam")
+        self.widgets["Tk"].return_value.protocol.assert_called_once_with(
+            "WM_DELETE_WINDOW", self.window.close)
+        with patch("biotool.desktop.Desktop"):
+            gui.main()
+        self.widgets["Tk"].return_value.mainloop.assert_called_once()
+
+    def test_enter_submits_and_input_receives_focus(self):
+        entry = self.widgets["Entry"].return_value
+        entry.bind.assert_called_once_with("<Return>", self.analyze)
+        entry.focus_set.assert_called_once()
+        entry.bind.call_args.args[1](Mock())
+        self.assertTrue(Path("simple_plot.html").is_file())
+        self.assertEqual(entry.focus_set.call_count, 2)
+
+    def test_status_and_notes_wrap_when_window_resizes(self):
+        self.window.resize_text(Mock(width=540))
+        self.widgets["Label"].return_value.configure.assert_called_with(wraplength=444)
 
     def test_success_generates_both_charts_and_restores_button(self):
         self.analyze()
@@ -277,12 +414,12 @@ class DesktopTests(unittest.TestCase):
         self.assertIn("completado", self.label_text.set.call_args.args[0])
 
     def test_invalid_input_is_displayed_without_network_access(self):
-        self.entry_text.get.return_value = "../invalid"
+        self.entry_text.set("../invalid")
         self.analyze()
         self.showerror.assert_called_once()
         self.urlopen.assert_not_called()
         self.browser.assert_not_called()
-        self.widgets["Button"].return_value.configure.assert_called_with(state="normal")
+        self.assertIsNone(self.window.future)
 
     def test_network_and_file_errors_are_visible_and_retryable(self):
         for error in (
@@ -311,6 +448,48 @@ class DesktopTests(unittest.TestCase):
             self.analyze()
         self.showerror.assert_not_called()
         self.widgets["Button"].return_value.configure.assert_called_with(state="normal")
+
+    def test_theme_switch_changes_widgets_and_new_reports(self):
+        from biotool.theme import PALETTES
+
+        self.window.appearance.set("light")
+        self.window.change_theme()
+        self.widgets["Tk"].return_value.configure.assert_called_with(
+            background=PALETTES["light"]["background"])
+        self.analyze()
+        html = Path("simple_plot.html").read_text(encoding="utf-8")
+        self.assertTrue('data-theme="light"' in html)
+
+    def test_in_progress_analysis_does_not_block_or_submit_twice(self):
+        pending = Future()
+        self.executor.submit.side_effect = None
+        self.executor.submit.return_value = pending
+        self.analyze()
+        self.widgets["Tk"].return_value.after.assert_called_once_with(75, self.window.poll)
+        self.analyze()
+        self.executor.submit.assert_called_once()
+        self.assertIn("en curso", self.label_text.get())
+        self.window.close()
+        self.widgets["Tk"].return_value.after_cancel.assert_called_once()
+        self.executor.shutdown.assert_called_once_with(wait=False, cancel_futures=True)
+        self.widgets["Tk"].return_value.destroy.assert_called_once()
+
+    def test_library_selection_runs_and_can_be_reused_offline(self):
+        tree = self.widgets["Treeview"].return_value
+        tree.selection.return_value = ("1CRN",)
+        self.window.library.show_selected()
+        self.window.library.use_selected()
+        self.assertTrue((self.window.library_dir / "1CRN.pdb").is_file())
+        self.urlopen.reset_mock()
+        self.urlopen.side_effect = urllib.error.URLError("offline")
+        self.window.library.use_selected()
+        self.urlopen.assert_not_called()
+        self.showerror.assert_not_called()
+
+    def test_library_empty_selection_has_visible_guidance(self):
+        self.window.library.use_selected()
+        self.assertIn("Selecciona", self.window.library.description.get())
+        self.urlopen.assert_not_called()
 
 
 if __name__ == "__main__":
